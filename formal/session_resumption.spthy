@@ -1,0 +1,26 @@
+/****************************************************************************
+DRAFT MODEL ONLY. Do not report a formal proof until Tamarin executes and a
+human reviews this model against docs/threat_model.md.
+****************************************************************************/
+
+theory SessionResumption
+begin
+
+builtins: hashing
+
+functions: derive/2, token/3
+
+rule IssueToken:
+  [ Fr(~root), Fr(~epoch), Fr(~nonce) ]
+  --[ TokenIssued(~epoch) ]->
+  [ Out(token(~epoch, ~nonce, h(<~root, ~epoch, ~nonce>))) ]
+
+rule AcceptToken:
+  [ In(token(E, N, A)) ]
+  --[ TokenAccepted(E) ]->
+  [ ]
+
+/* TODO: add persistent highest-epoch state, attacker replay capability,
+   message counters, endpoint identities, and lemmas for freshness. */
+
+end

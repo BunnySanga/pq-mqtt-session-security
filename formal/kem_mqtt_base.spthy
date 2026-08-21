@@ -1,0 +1,11 @@
+/****************************************************************************
+DRAFT MODEL ONLY. This is a placeholder for the inherited KEM-MQTT model.
+The exact Kim-Seo message flow and attacker capabilities require human review.
+****************************************************************************/
+
+theory KEMMQTTBase
+begin
+builtins: hashing
+/* TODO: encode PDK identities, two KEM contributions, key confirmation,
+   transcript binding, and authenticated application data. */
+end
