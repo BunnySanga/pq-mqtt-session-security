@@ -11,7 +11,7 @@ import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ..crypto import KEMKeyPair, mac
-from .epoch_derivation import derive_epoch_key, derive_resume_key
+from .epoch_derivation import derive_epoch_key, derive_resume_key, ratchet_forward
 from .handshake import complete_broker_handshake, complete_client_handshake, perform_handshake
 from .replay_guard import ReplayError, ReplayGuard
 
@@ -54,14 +54,21 @@ class ClientSession:
     session_secret: bytes
     epoch: int = 0
     counter: int = 0
+    epoch_secret: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.epoch_secret is None:
+            self.epoch_secret = self.session_secret
 
     def resume_token(self) -> bytes:
         nonce = os.urandom(16)
         body = self.epoch.to_bytes(8, "big") + nonce
-        return _token(self.epoch, nonce, mac(derive_resume_key(self.session_secret, self.epoch), body))
+        return _token(self.epoch, nonce, mac(derive_resume_key(self.epoch_secret, self.epoch), body))
 
     def advance_epoch(self) -> None:
         self.epoch += 1
+        self.epoch_secret = ratchet_forward(self.epoch_secret, self.epoch)
+        self.session_secret = self.epoch_secret
         self.counter = 0
 
     def rekey(self) -> bytes:
@@ -77,7 +84,7 @@ class ClientSession:
         self.counter += 1
         nonce = os.urandom(12)
         aad = _encode({"epoch": self.epoch, "counter": self.counter, "topic": topic})
-        ciphertext = AESGCM(derive_epoch_key(self.session_secret, self.epoch)).encrypt(nonce, payload, aad)
+        ciphertext = AESGCM(derive_epoch_key(self.epoch_secret, self.epoch)).encrypt(nonce, payload, aad)
         envelope = _encode({
             "epoch": self.epoch,
             "counter": self.counter,
@@ -92,14 +99,25 @@ class ClientSession:
 class BrokerSession:
     session_secret: bytes
     guard: ReplayGuard
+    epoch_secret: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.epoch_secret is None:
+            self.epoch_secret = self.session_secret
 
     def accept_resume(self, token: bytes) -> int:
         epoch, nonce, authenticator = _decode_token(token)
         if epoch <= self.guard.highest_epoch:
             raise ReplayError("resume token epoch was already used")
-        expected = mac(derive_resume_key(self.session_secret, epoch), epoch.to_bytes(8, "big") + nonce)
+        candidate_secret = self.epoch_secret
+        first_ratchet_epoch = max(1, self.guard.highest_epoch + 1)
+        for candidate_epoch in range(first_ratchet_epoch, epoch + 1):
+            candidate_secret = ratchet_forward(candidate_secret, candidate_epoch)
+        expected = mac(derive_resume_key(candidate_secret, epoch), epoch.to_bytes(8, "big") + nonce)
         if not hmac.compare_digest(authenticator, expected):
             raise SessionError("resume token authentication failed")
+        self.epoch_secret = candidate_secret
+        self.session_secret = candidate_secret
         self.guard.accept_epoch(epoch)
         return epoch
 
@@ -124,7 +142,7 @@ class BrokerSession:
         self.guard.validate_message(epoch, counter)
         aad = _encode({"epoch": epoch, "counter": counter, "topic": topic})
         try:
-            payload = AESGCM(derive_epoch_key(self.session_secret, epoch)).decrypt(nonce, ciphertext, aad)
+            payload = AESGCM(derive_epoch_key(self.epoch_secret, epoch)).decrypt(nonce, ciphertext, aad)
         except Exception as exc:
             raise SessionError("message authentication failed") from exc
         self.guard.accept_message(epoch, counter)

@@ -2,6 +2,7 @@ import pytest
 
 from pq_mqtt.crypto import generate_keypair
 from pq_mqtt.mqtt_sim import SimulatedBroker
+from pq_mqtt.session.epoch_derivation import derive_epoch_key
 from pq_mqtt.session import establish_pair
 from pq_mqtt.session.replay_guard import ReplayError
 
@@ -34,6 +35,16 @@ def test_epoch_transition_requires_new_epoch():
     broker.accept_resume(client.resume_token())
     envelope, _ = client.seal("status", b"ok")
     assert broker.open(envelope) == ("status", b"ok")
+
+
+def test_ratchet_overwrites_previous_secret():
+    client, _ = established()
+    previous_secret = client.session_secret
+    previous_key = derive_epoch_key(previous_secret, 0)
+    client.advance_epoch()
+    assert client.session_secret == client.epoch_secret
+    assert client.session_secret != previous_secret
+    assert derive_epoch_key(client.session_secret, 1) != previous_key
 
 
 def test_replayed_message_counter_is_rejected():

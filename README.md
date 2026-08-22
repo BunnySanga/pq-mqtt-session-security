@@ -5,6 +5,7 @@ Semester 1 software research prototype based on KEM-MQTT/KEMTLS-PDK. It adds epo
 ## What is implemented
 
 - ML-KEM-512 initial mutual key establishment.
+- One-way HMAC epoch ratchet with overwritten predecessor state.
 - Epoch-bound HKDF data and resume keys.
 - One-use authenticated reconnect tokens.
 - Monotonic epoch and message-counter replay protection.
@@ -16,8 +17,7 @@ Semester 1 software research prototype based on KEM-MQTT/KEMTLS-PDK. It adds epo
 
 ## What is not claimed
 
-This is not the authors' handwritten AVR implementation, a physical AVR measurement, a production Mosquitto broker, or a completed formal proof. The Python exchange is protocol-shaped and ML-KEM-backed, but it is not a wire-compatible replacement for KEM-MQTT. Tamarin files should be treated as draft research artifacts until executed and human-reviewed.
-
+This is not the authors' handwritten AVR implementation, a physical AVR measurement, a production Mosquitto broker, or a completed formal proof. The Python exchange is protocol-shaped and ML-KEM-backed, but it is not a wire-compatible replacement for KEM-MQTT. The one-way ratchet provides a prototype forward-secrecy mechanism, but secure memory erasure and formal verification are still required for a production security claim. Tamarin files should be treated as draft research artifacts until executed and human-reviewed.
 ## Run on Mac
 
 ```bash

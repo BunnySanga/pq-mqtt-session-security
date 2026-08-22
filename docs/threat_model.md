@@ -10,6 +10,6 @@ Security goals:
 4. Both endpoints derive the same initial session secret.
 5. Epoch keys are domain-separated.
 
-A long-term-key compromise scenario is a research question. This prototype must not claim forward secrecy from the epoch derivation alone. Formal verification and a reviewed protocol construction are required for that claim.
+A later compromise of the live ratchet state is considered in the lifecycle design. Each epoch secret is replaced by a one-way HMAC-derived value and the predecessor is not retained by the session object, so the current state is not intended to derive earlier epoch keys. This is a prototype forward-secrecy mechanism, not a proof; secure memory erasure, endpoint compromise details, and formal verification remain required for a production claim.
 
 Physical AVR power analysis, real radio transmission, privileged packet-loss injection, and production broker hardening are out of scope for the Kaggle-first version.

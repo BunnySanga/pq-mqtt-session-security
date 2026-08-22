@@ -57,21 +57,28 @@ The implementation does not claim to reproduce the paper in full. In particular,
 
 ### 4.2 Initial Session Establishment
 
-The client and broker use one shared handshake transcript. Two ML-KEM encapsulations contribute shared secrets: one addressed to the broker and one addressed to the client. Both endpoints combine the contributions and a transcript nonce through HKDF-SHA256 to derive the same root session secret.
+The client and broker use one shared handshake transcript. Two ML-KEM encapsulations contribute shared secrets: one addressed to the broker and one addressed to the client. Both endpoints combine the contributions and a transcript nonce through HKDF-SHA256 to derive the initial epoch secret.
 
 ### 4.3 Epoch Key Derivation
+
+Before each new epoch, the current epoch secret is advanced with a one-way HMAC ratchet and the predecessor is overwritten:
+
+$$
+S_e = HMAC-SHA256(S_{e-1},
+  \mathrm{"pq-mqtt/ratchet/v1/"} \parallel uint64(e))
+$$
 
 For epoch $e$, the prototype derives a data key using a domain-separated HKDF label:
 
 $$
-K_{data,e} = HKDF(root\_secret,
+K_{data,e} = HKDF(S_e,
   \text{"pq-mqtt/epoch/v1/"} \parallel uint64(e) \parallel \text{"mqtt-data"})
 $$
 
 A separate resume-authentication key is derived with a different purpose label:
 
 $$
-K_{resume,e} = HKDF(root\_secret,
+K_{resume,e} = HKDF(S_e,
   \text{"pq-mqtt/epoch/v1/"} \parallel uint64(e) \parallel \text{"resume-auth"})
 $$
 
@@ -81,7 +88,7 @@ The client advances to a new epoch for reconnection or periodic rekeying. The br
 
 Each message contains:
 
-- epoch number,
+The client and broker use one shared handshake transcript. Two ML-KEM encapsulations contribute shared secrets: one addressed to the broker and one addressed to the client. Both endpoints combine the contributions and a transcript nonce through HKDF-SHA256 to derive the initial epoch secret.
 - strictly increasing message counter,
 - topic,
 - random AES-GCM nonce,
@@ -103,13 +110,8 @@ The evaluated security goals are:
 6. Both endpoints derive the same initial session secret.
 7. Different epochs use domain-separated keys.
 
-Forward secrecy under long-term-key compromise is not claimed by this prototype. A formal model and security proof are required before making that claim.
+The one-way ratchet provides a prototype forward-secrecy mechanism against compromise of current ratchet state because predecessor state is overwritten. This behavior is not formally proven, and compromise of the original static KEM keys remains outside the empirical claim.
 
-## 6. Implementation
-
-The main implementation files are:
-
-- `pq_mqtt/crypto.py`: ML-KEM-512, HKDF-SHA256, and HMAC utilities.
 - `pq_mqtt/session/handshake.py`: shared-transcript initial exchange.
 - `pq_mqtt/session/epoch_derivation.py`: epoch-specific key derivation.
 - `pq_mqtt/session/replay_guard.py`: monotonic epoch and counter validation.
@@ -128,7 +130,7 @@ The benchmark compares two operations:
 
 1. **Initial handshake:** generate ML-KEM identities, perform the two-sided exchange, and derive the root session secret.
 2. **Epoch resume:** create and authenticate a new epoch token after the session exists.
-
+The epoch secret is advanced by a one-way HMAC-derived value before each new epoch; the predecessor is overwritten and not retained by the session object. Therefore, the current live state is not intended to derive earlier epoch keys. This is an implemented prototype forward-secrecy mechanism, not a formal proof; secure memory erasure, endpoint compromise details, and formal verification remain required for a production claim.
 The experiment was run for 100 trials in the project-local Python virtual environment. Measurements use `time.perf_counter_ns()`. The benchmark records each trial in:
 
 - `results/raw/sem1_replay.csv`
@@ -142,7 +144,7 @@ The first trial may include interpreter or cryptographic-library warm-up. Mean a
 
 | Validation | Result |
 |---|---:|
-| Automated tests | 11 passed |
+| Automated tests | 12 passed |
 | End-to-end connect/publish/reconnect flow | Passed |
 | Replay-token attack | Rejected |
 | Interrupted-message attack | Rejected |
@@ -185,16 +187,6 @@ full_kem_mqtt_handshake_simulated: 4.319320s
  epoch_resume_simulated: 0.010855s
 ```
 
-These are model outputs based on assumed cycle counts. They are not hardware measurements and must not be compared directly with the paper's ATmega4808 results as if they were experimentally equivalent.
-
-## 9. Security Evaluation
-
-The test suite verifies:
-
-- ML-KEM encapsulation and decapsulation agreement.
-- HKDF determinism and domain separation.
-- Initial encrypted message delivery.
-- Replayed resume-token rejection.
 - Epoch transition behavior.
 - Replayed message-counter rejection.
 - Tampered-message rejection.
@@ -219,14 +211,14 @@ The lower resume cost is expected because epoch resumption uses symmetric deriva
 3. No ATmega4808 or other AVR hardware was used.
 4. No physical energy, SRAM, flash, cycle, or radio measurements were taken.
 5. The formal files are draft models and were not used to claim a completed proof.
-6. The prototype does not claim forward secrecy under compromise without additional formal analysis.
+6. The ratchet's forward-secrecy behavior is implemented but not formally proven; secure erasure and static-key compromise analysis remain future work.
 7. Python timing is machine- and environment-dependent.
 
 ## 12. Conclusion
 
 This project successfully implements and evaluates a secure session-lifecycle extension for post-quantum MQTT software. It demonstrates that authenticated epoch-based reconnection can be substantially faster than repeating the initial ML-KEM handshake while rejecting replayed and modified protocol data.
 
-The 100-trial evaluation produced a median speedup of approximately 7.07x for epoch resumption. The functional test suite passed all 11 tests, and the end-to-end publisher/broker/subscriber workflow completed successfully.
+The 100-trial evaluation produced a median speedup of approximately 7.07x for epoch resumption. The functional test suite passed all 12 tests, and the end-to-end publisher/broker/subscriber workflow completed successfully.
 
 The correct conclusion is:
 
@@ -254,5 +246,5 @@ PYTHONPATH=. python experiments/sem1_session_lifecycle/analyze_results.py result
 Expected core result:
 
 ```text
-11 passed
+12 passed
 ```

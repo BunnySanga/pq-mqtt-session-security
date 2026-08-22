@@ -2,6 +2,12 @@
 
 The initial exchange uses two ML-KEM encapsulations with pre-distributed static public keys. The client encapsulates to the broker and the broker encapsulates to the client. Both sides combine the two shared secrets and a transcript nonce through HKDF to obtain the root session secret.
 
+The epoch secret is advanced by a one-way ratchet before each new epoch; the previous secret is overwritten:
+
+```text
+S_e = HMAC-SHA256(S_(e-1), "pq-mqtt/ratchet/v1" || uint64(e))
+```
+
 For epoch `e`:
 
 ```text
